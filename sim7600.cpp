@@ -145,12 +145,12 @@ void Sim7600Component::parse_cmd_(std::string message) {
       break;
     case STATE_SETUP_CLIP:
       send_cmd_("AT+CLIP=1");
-      this->state_ = STATE_CREG;
+      this->state_ = STATE_CEREG;
       this->expect_ack_ = true;
       break;
     case STATE_SETUP_USSD:
       send_cmd_("AT+CUSD=1");
-      this->state_ = STATE_CREG;
+      this->state_ = STATE_CEREG;
       this->expect_ack_ = true;
       break;
     case STATE_SEND_USSD1:
@@ -188,14 +188,14 @@ void Sim7600Component::parse_cmd_(std::string message) {
       if (message == "OK")
         this->state_ = STATE_INIT;
       break;
-    case STATE_CREG:
+    case STATE_CEREG:
       send_cmd_("AT+CEREG?");
-      this->state_ = STATE_CREG_WAIT;
+      this->state_ = STATE_CEREG_WAIT;
       break;
-    case STATE_CREG_WAIT: {
-      // Response: "+CREG: 0,1" -- the one there means registered ok
-      //           "+CREG: -,-" means not registered ok
-      bool registered = message.compare(0, 6, "+CEREG:") == 0 && (message[9] == '1' || message[9] == '5');
+    case STATE_CEREG_WAIT: {
+      // Response: "+CEREG: 0,1" -- the one there means registered ok
+      //           "+CEREG: -,-" means not registered ok
+      bool registered = message.compare(0, 7, "+CEREG:") == 0 && (message[10] == '1' || message[10] == '5');
       if (registered) {
         if (!this->registered_) {
           ESP_LOGD(TAG, "Registered OK");
