@@ -18,6 +18,8 @@ namespace sim7600 {
 
 const uint16_t SIM7600_READ_BUFFER_LENGTH = 1024;
 
+
+
 enum State {
   STATE_IDLE = 0,
   STATE_INIT,
@@ -25,6 +27,8 @@ enum State {
   STATE_SETUP_CLIP,
   STATE_CEREG,
   STATE_CEREG_WAIT,
+  STATE_CGREG,
+  STATE_CGREG_WAIT,
   STATE_CSQ,
   STATE_CSQ_RESPONSE,
   STATE_SENDING_SMS_1,
@@ -53,13 +57,16 @@ class Sim7600Component : public uart::UARTDevice, public PollingComponent {
   void update() override;
   void loop() override;
   void dump_config() override;
+  
 #ifdef USE_BINARY_SENSOR
   void set_registered_binary_sensor(binary_sensor::BinarySensor *registered_binary_sensor) {
     registered_binary_sensor_ = registered_binary_sensor;
   }
 #endif
+
 #ifdef USE_SENSOR
   void set_rssi_sensor(sensor::Sensor *rssi_sensor) { rssi_sensor_ = rssi_sensor; }
+  void set_network_sensor(sensor::Sensor *network_sensor) { network_sensor_ = network_sensor; }   // DCO
 #endif
   void add_on_sms_received_callback(std::function<void(std::string, std::string)> callback) {
     this->sms_received_callback_.add(std::move(callback));
@@ -93,7 +100,9 @@ class Sim7600Component : public uart::UARTDevice, public PollingComponent {
 
 #ifdef USE_SENSOR
   sensor::Sensor *rssi_sensor_{nullptr};
+  sensor::Sensor *network_sensor_{nullptr};
 #endif
+
   std::string sender_;
   std::string message_;
   char read_buffer_[SIM7600_READ_BUFFER_LENGTH];

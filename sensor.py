@@ -12,6 +12,7 @@ from . import CONF_SIM7600_ID, Sim7600Component
 DEPENDENCIES = ["sim7600"]
 
 CONF_RSSI = "rssi"
+CONF_NETWORK = "network"
 
 CONFIG_SCHEMA = {
     cv.GenerateID(CONF_SIM7600_ID): cv.use_id(Sim7600Component),
@@ -22,6 +23,9 @@ CONFIG_SCHEMA = {
         state_class=STATE_CLASS_MEASUREMENT,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
+    cv.Optional(CONF_NETWORK): sensor.sensor_schema(
+        accuracy_decimals=0,
+    ),
 }
 
 
@@ -31,3 +35,7 @@ async def to_code(config):
     if CONF_RSSI in config:
         sens = await sensor.new_sensor(config[CONF_RSSI])
         cg.add(sim7600_component.set_rssi_sensor(sens))
+        
+    if CONF_NETWORK in config:
+        sens = await sensor.new_sensor(config[CONF_NETWORK])
+        cg.add(sim7600_component.set_network_sensor(sens))
