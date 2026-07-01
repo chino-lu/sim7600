@@ -1,28 +1,128 @@
-# Home assistant ESPHome Addon config
+# SIM7600 ESPHome External Component
 
-### Yaml code for module:
+An [ESPHome](https://esphome.io/) external component that adds support for the **SIMCom SIM7600** series 4G/LTE modules (SMS, voice calls, USSD, and mobile data) to any ESP32/ESP8266 device via UART and AT commands.
+
+## Features
+
+- 📩 **SMS** — send SMS messages and receive incoming SMS as an event (sender + message)
+- 📞 **Voice calls** — dial out, and get notified on incoming calls, call connect, and call disconnect
+- 🔢 **USSD** — send USSD codes (e.g. prepaid balance checks) and receive the response
+- 🌐 **Mobile data** — connect/disconnect the module's PPP/data connection
+- 📶 **Diagnostics** — optional RSSI (signal strength) and network status sensors, plus a "registered on network" binary sensor
+
+## Requirements
+
+- A SIM7600-based module (e.g. SIM7600E, SIM7600X, SIM7600G-H) wired to your ESP32/ESP8266 via UART (TX/RX)
+- A **PIN-free SIM card**. If the SIM has a PIN, ESPHome logs will show `Error code 3` on `AT+CPIN=1` (or similar), and the module's status LED will stay solid instead of blinking.
+- [ESPHome](https://esphome.io/) installed (Home Assistant Add-on, CLI, or standalone)
+
+## Installation
+
+Reference this repository directly as an external component in your ESPHome YAML — no manual file copying required:
+
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/chino-lu/sim7600
+    components: [sim7600]
 ```
-esphome:
-  name: esphome-web-014ffc
-  friendly_name: ES32Relay
-esp32:
-  board: esp32-s2-saola-1
-  framework:
-    type: arduino
-    
+
+Alternatively, clone/download this repository and reference it locally:
+
+```yaml
 external_components:
   - source:
       type: local
-      path: components
+      path: components   # folder containing this repo's files, e.g. esphome/components/sim7600
+```
 
-# Enable logging
-logger:
+## Wiring example
 
+| ESP32 pin | SIM7600 pin |
+|-----------|-------------|
+| TX (e.g. GPIO18) | RX |
+| RX (e.g. GPIO33) | TX |
+| GND | GND |
+| 5V/VUSB | VCC |
 
-# Enable Home Assistant API
+Use whichever free GPIOs you like for TX/RX — just match them in the `uart:` section below.
+
+## Configuration example
+
+```yaml
+uart:
+  id: sim7600_uart
+  tx_pin: GPIO18
+  rx_pin: GPIO33
+  baud_rate: 115200
+
+sim7600:
+  id: modem
+  uart_id: sim7600_uart
+  on_sms_received:
+    - lambda: |-
+        ESP_LOGI("sim7600", "SMS from %s: %s", sender.c_str(), message.c_str());
+  on_incoming_call:
+    - lambda: |-
+        ESP_LOGI("sim7600", "Incoming call from %s", caller_id.c_str());
+  on_call_connected:
+    - logger.log: "Call connected"
+  on_call_disconnected:
+    - logger.log: "Call disconnected"
+  on_ussd_received:
+    - lambda: |-
+        ESP_LOGI("sim7600", "USSD reply: %s", ussd.c_str());
+
+sensor:
+  - platform: sim7600
+    sim7600_id: modem
+    rssi:
+      name: "Modem RSSI"
+    network:
+      name: "Network status"
+
+binary_sensor:
+  - platform: sim7600
+    sim7600_id: modem
+    registered:
+      name: "Modem registered"
+```
+
+### Actions
+
+The component exposes the following actions for use in automations, buttons, or Home Assistant services:
+
+```yaml
+# Send an SMS
+- sim7600.send_sms:
+    id: modem
+    recipient: "+33123456789"
+    message: "Hello from ESPHome!"
+
+# Dial a number
+- sim7600.dial:
+    id: modem
+    recipient: "+33123456789"
+
+# Send a USSD code
+- sim7600.send_ussd:
+    id: modem
+    ussd: "*123#"
+
+# Open / close the mobile data connection
+- sim7600.connect:
+    id: modem
+- sim7600.disconnect:
+    id: modem
+```
+
+### Exposing actions as Home Assistant services
+
+You can expose these actions directly as Home Assistant services via the ESPHome `api:` block:
+
+```yaml
 api:
-  encryption:
-    key: "XXX"
   services:
     - service: send_sms
       variables:
@@ -33,138 +133,28 @@ api:
             id: modem
             recipient: !lambda 'return recipient;'
             message: !lambda 'return message;'
-    - service: dial
-      variables:
-        recipient: string
-      then:
-        - sim7600.dial:
-            id: modem
-            recipient: !lambda 'return recipient;'
-    - service: connect
-      then:
-        - sim7600.connect
-    - service: disconnect
-      then:
-        - sim7600.disconnect
-    - service: send_ussd
-      variables:
-        ussdCode: string
-      then:
-        - sim7600.send_ussd:
-            ussd: !lambda 'return ussdCode;'
+```
 
+## Triggers
 
-ota:
-  - platform: esphome
-    password: "pwdXXXota"
+| Trigger | Provides | Description |
+|---|---|---|
+| `on_sms_received` | `sender`, `message` | Fired when a new SMS arrives |
+| `on_incoming_call` | `caller_id` | Fired when the modem detects an incoming call |
+| `on_call_connected` | – | Fired when a call is answered/connected |
+| `on_call_disconnected` | – | Fired when a call ends |
+| `on_ussd_received` | `ussd` | Fired when a USSD response is received |
 
+## Troubleshooting
 
+- **Steady green LED / `Error code 3`**: your SIM card has a PIN. Remove it (e.g. with a phone) before use.
+- **No response from the module**: double-check TX/RX are not swapped and that the baud rate matches your module (commonly `115200`).
+- **SMS sending fails / times out**: ensure the SIM has SMS credit/plan and adequate signal (check the RSSI sensor).
 
+## Credits
 
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
-  ap:
-    ssid: "Esphome-Web-014Ffc"
-    password: "pwdXXXHotspot"
+Component developed by [chino-lu](https://github.com/chino-lu).
 
+## License
 
-captive_portal:
-
-text_sensor:
-  - platform: template
-    id: sms_sender
-    name: "Sms Sender"
-  - platform: template
-    id: sms_message
-    name: "Sms Message"
-  - platform: template
-    id: caller_id_text_sensor
-    name: "Caller ID"
-  - platform: template
-    id: ussd_message
-    name: "Ussd Code"
-
-
-switch:
-  - platform: gpio
-    name: "SIM800_PWKEY"
-    pin: 4
-    restore_mode: ALWAYS_OFF
-  - platform: gpio
-    name: "SIM800_RST"
-    pin: 5
-    restore_mode: ALWAYS_ON
-    internal: true
-  - platform: gpio
-    name: "SIM800_POWER"
-    pin: 6
-    restore_mode: ALWAYS_ON
-    internal: true
-  - platform: gpio
-    id: relay_1
-    name: "PowerOn_Relay"
-    pin: 16
-    restore_mode: ALWAYS_ON
-  - platform: restart
-    name: "Sim800L Restart"
-
-
-uart:
-  tx_pin: GPIO18
-  rx_pin: GPIO33
-  baud_rate: 115200
-  debug:
-    direction: BOTH
-    dummy_receiver: false
-    after:
-      delimiter: "\n"
-    sequence:
-      - lambda: UARTDebug::log_string(direction, bytes);
-
-
-sim7600:
-  id: modem
-  on_sms_received:
-    - lambda: |-
-        id(sms_sender).publish_state(sender);
-        id(sms_message).publish_state(message);
-        if ( (id(sms_sender).state == "+33123456789") && ( (id(sms_message).state == "PowerOff") || (id(sms_message).state == "poweroff") ) ) {
-          id(relay_1).turn_off();
-        }
-        if ( (id(sms_sender).state == "+33123456789") && ( (id(sms_message).state == "PowerOn") || (id(sms_message).state == "poweron") ) ) {
-          id(relay_1).turn_on();
-        }
-  on_incoming_call:
-    - lambda: |-
-        id(caller_id_text_sensor).publish_state(caller_id);
-  on_call_connected:
-    - logger.log:
-        format: Call connected
-  on_call_disconnected:
-    - logger.log:
-        format: Call disconnected
-  on_ussd_received:
-    - lambda: |-
-        id(ussd_message).publish_state(ussd);
- ```      
-
-### Home Assistant folders structure:
-Copy the git repo files from https://github.com/smillier/sim7600.git in esphome/components/sim7600 
-![VSCode components](https://github.com/smillier/sim7600/blob/main/HomeAssistant_FilesLocation.png)
-
-SIM Card on the sim7600 module must be PIN free. If there is a PIN code on your SIM card, the ESPHome logs will show Error code 3 when running the AT+CMFG=1 command. The sim7600 will also show a steady green led. When there is no PIN code on SIM, the green led will blink.
-
-### sim7600 module wiring example 
-| Wemos S2 Mini | SIM7600 | Relay board |
-|---------------|---------|-------------|
-| GPIO18 - TX   | R       |             |
-| GPIO33 - RX   | T       |             |
-| GPIO4         | K       |             |
-| VUSB/5V       | V       | VCC         |
-| GND/GND       | G       | GND         |
-| GPIO16        |         | IN1         |
-
-
-Special thanks to Chino-Lu for his work on the sim7600. All the code here is from his repo: https://github.com/chino-lu/sim7600.git
+See the repository for license details.
